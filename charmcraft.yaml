@@ -54,3 +54,26 @@ bases:
     run-on:
     - name: ubuntu
       channel: "22.04"
+
+comment: >
+  Define configs for charm
+config:
+  options:
+    server-port:
+      default: 8000
+      description: Default port on which FastAPI is available
+      type: int
+comment: >
+  config:
+    options:
+      # Each option name is the name by which the charm will query the option.
+      <option name>:
+        # (Required) The type of the option
+        type: string | int | float | boolean | secret
+        # (Optional) The default value of the option
+        default: <a reasonable default value of the same type as the option>
+        # (Optional): A string describing the option. Also appears on charmhub.io
+        description: <description string>
+
+comment: >
+  Define configs for event handlers

@@ -31,6 +31,7 @@ class FastAPIDemoCharm(ops.CharmBase):
         framework.observe(self.on.config_changed, self._on_config_changed)
         framework.observe(self.database.on.database_created, self._on_database_created)
         framework.observe(self.database.on.endpoints_changed, self._on_database_created)
+        framework.observe(self.on.collect_unit_status, self._on_collect_status)
 
     def _on_demo_server_pebble_ready(self, event: ops.PebbleReadyEvent)  -> None:
         """
@@ -78,7 +79,8 @@ class FastAPIDemoCharm(ops.CharmBase):
 
         # We need to do validation of rules here because Charm does not know which config options are changed.
         if port == 22:
-            self.unit.status = ops.BlockedStatus('invalid port number, 22 is reserved for SSH')
+            # The collect-status handler will set the status to blocked.
+            logger.debug('Invalid port number, 22 is reserved for SSH')
             return
         
         logger.debug("New application port is requested: %s", port)
@@ -111,6 +113,30 @@ class FastAPIDemoCharm(ops.CharmBase):
         except ops.pebble.APIError:
             self.unit.status = ops.MaintenanceStatus('Waiting for Pebble in workload container')
 
+    def _on_collect_status(self, event: ops.CollectStatusEvent) -> None:
+        port = self.config['server-port']
+        
+        if port == 22:
+            event.add_status(ops.BlockedStatus('Invalid port number, 22 is reserved for SSH'))
+        
+        if not self.model.get_relation('database'):
+            # We need the user to do 'juju integrate'.
+            event.add_status(ops.BlockedStatus('Waiting for database relation'))
+        
+        elif not self.database.fetch_relation_data():
+            # We need the charms to finish integrating.
+            event.add_status(ops.WaitingStatus('Waiting for database relation'))
+        
+        try:
+            status = self.container.get_service(self.pebble_service_name)
+        except (ops.pebble.APIError, ops.ModelError):
+            event.add_status(ops.MaintenanceStatus('Waiting for Pebble in workload container'))
+        else:
+            if not status.is_running():
+                event.add_status(ops.MaintenanceStatus('Waiting for the service to start up'))
+        
+        event.add_status(ops.ActiveStatus())
+        
     @property
     def version(self) -> str:
         try:

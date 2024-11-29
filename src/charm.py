@@ -2,6 +2,7 @@
 
 import ops
 import logging
+import requests
 
 '''
 Log messages can be retrieved using juju debug-log
@@ -98,9 +99,23 @@ class FastAPIDemoCharm(ops.CharmBase):
                 self.container.restart(self.pebble_service_name)
                 logger.info(f"Restarted '{self.pebble_service_name}' service")
         
+            self.unit.set_workload_version(self.version)
             self.unit.status = ops.ActiveStatus()
         except ops.pebble.APIError:
             self.unit.status = ops.MaintenanceStatus('Waiting for Pebble in workload container')
+
+    @property
+    def version(self) -> str:
+        try:
+            if self.container.get_services(self.pebble_service_name):
+                return self._request_version()
+        except Exception as e:
+            logger.warning("unable to get version from API: %s", str(e), exc_info=True)
+        return ""
+
+    def _request_version(self) -> str:
+        resp = requests.get(f"http://localhost:{self.config['server-port']}/version", timeout=10)
+        return resp.json()["version"]
 
 if __name__ == "__main__":  # pragma: nocover
     ops.main(FastAPIDemoCharm)

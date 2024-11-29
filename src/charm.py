@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+from typing import Dict, Optional
+from charms.data_platform_libs.v0.data_interfaces import DatabaseCreatedEvent
+from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
 
 import ops
 import logging
@@ -21,10 +24,13 @@ class FastAPIDemoCharm(ops.CharmBase):
         super().__init__(framework)
         self.pebble_service_name = "fastapi-service"
         self.container = self.unit.get_container('demo-server')
+        self.database = DatabaseRequires(self, relation_name="database", database_name="names_db")
 
         # Event handlers
         framework.observe(self.on.demo_server_pebble_ready, self._on_demo_server_pebble_ready)
         framework.observe(self.on.config_changed, self._on_config_changed)
+        framework.observe(self.database.on.database_created, self._on_database_created)
+        framework.observe(self.database.on.endpoints_changed, self._on_database_created)
 
     def _on_demo_server_pebble_ready(self, event: ops.PebbleReadyEvent)  -> None:
         """
@@ -61,6 +67,7 @@ class FastAPIDemoCharm(ops.CharmBase):
                     'summary': 'fastapi demo',
                     'command': command,
                     'startup': 'enabled',
+                    'environment': self.app_environment,
                 }
             },
         }
@@ -116,6 +123,56 @@ class FastAPIDemoCharm(ops.CharmBase):
     def _request_version(self) -> str:
         resp = requests.get(f"http://localhost:{self.config['server-port']}/version", timeout=10)
         return resp.json()["version"]
+    
+    def fetch_postgres_relation_data(self) -> Dict[str, str]:
+        """
+        This function retrieves relation data from a postgres database using
+        the `fetch_relation_data` method of the `database` object. The retrieved data is
+        then logged for debugging purposes, and any non-empty data is processed to extract
+        endpoint information, username, and password. This processed data is then returned as
+        a dictionary. If no data is retrieved, the unit is set to waiting status and
+        the program exits with a zero status code.
+        """
+        relations = self.database.fetch_relation_data()
+        logger.debug('Got following database data: %s', relations)
+        for data in relations.values():
+            if not data:
+                continue
+            logger.info('New PSQL database endpoint is %s', data['endpoints'])
+            host, port = data['endpoints'].split(':')
+            db_data = {
+                'db_host': host,
+                'db_port': port,
+                'db_username': data['username'],
+                'db_password': data['password'],
+            }
+            return db_data
+        return {}
+    
+    @property
+    def app_environment(self) -> Dict[str, Optional[str]]:
+        """
+        This property method creates a dictionary containing environment variables
+        for the application. It retrieves the database authentication data by calling
+        the `fetch_postgres_relation_data` method and uses it to populate the dictionary.
+        If any of the values are not present, it will be set to None.
+        The method returns this dictionary as output.
+        """
+        db_data = self.fetch_postgres_relation_data()
+        if not db_data:
+            return {}
+        env = {
+            'DEMO_SERVER_DB_HOST': db_data.get('db_host', None),
+            'DEMO_SERVER_DB_PORT': db_data.get('db_port', None),
+            'DEMO_SERVER_DB_USER': db_data.get('db_username', None),
+            'DEMO_SERVER_DB_PASSWORD': db_data.get('db_password', None),
+        }
+        return env
+    
+    def _on_database_created(self, event: DatabaseCreatedEvent) -> None:
+        """Event is fired when postgres database is created."""
+        self._update_layer_and_restart()
+
 
 if __name__ == "__main__":  # pragma: nocover
     ops.main(FastAPIDemoCharm)

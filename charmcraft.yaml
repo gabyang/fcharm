@@ -12,6 +12,13 @@ assumes: # softly enforces env contraints through 'best efforts'
   - juju >= 3.1
   - k8s-api
 
+comment: >
+  This endpoint says that our charm is requesting a relation called database over an 
+  interface called postgresql_client with a maximum number of supported connections of 1
+requires:
+  database:
+    interface: postgresql_client
+    limit: 1
 
 containers:
   demo-server:
@@ -75,5 +82,3 @@ comment: >
         # (Optional): A string describing the option. Also appears on charmhub.io
         description: <description string>
 
-comment: >
-  Define configs for event handlers

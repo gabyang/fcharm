@@ -12,6 +12,10 @@ assumes: # softly enforces env contraints through 'best efforts'
   - juju >= 3.1
   - k8s-api
 
+peers:
+  fastapi-peer:
+    interface: fastapi_demo_peers
+
 comment: >
   This endpoint says that our charm is requesting a relation called database over an 
   interface called postgresql_client with a maximum number of supported connections of 1

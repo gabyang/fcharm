@@ -1,17 +1,30 @@
 #!/usr/bin/env python3
-from typing import Dict, Optional
+from typing import Dict, Optional, List, Union, cast
 from charms.data_platform_libs.v0.data_interfaces import DatabaseCreatedEvent
 from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires
 
 import ops
 import logging
 import requests
+import json
 
 '''
 Log messages can be retrieved using juju debug-log
 info: https://discourse.charmhub.io/t/how-to-manage-agent-logs/9151
 '''
 logger = logging.getLogger(__name__)
+
+PEER_NAME = 'fastapi-peer'
+
+JSONData = Union[
+    Dict[str, 'JSONData'],
+    List['JSONData'],
+    str,
+    int,
+    float,
+    bool,
+    None,
+]
 
 class FastAPIDemoCharm(ops.CharmBase):
     """
@@ -32,6 +45,7 @@ class FastAPIDemoCharm(ops.CharmBase):
         framework.observe(self.database.on.database_created, self._on_database_created)
         framework.observe(self.database.on.endpoints_changed, self._on_database_created)
         framework.observe(self.on.collect_unit_status, self._on_collect_status)
+        framework.observe(self.on.start, self._count)
 
     def _on_demo_server_pebble_ready(self, event: ops.PebbleReadyEvent)  -> None:
         """
@@ -198,6 +212,37 @@ class FastAPIDemoCharm(ops.CharmBase):
     def _on_database_created(self, event: DatabaseCreatedEvent) -> None:
         """Event is fired when postgres database is created."""
         self._update_layer_and_restart()
+
+    @property
+    def peers(self) -> Optional[ops.Relation]:
+        """Fetch the peer relation."""
+        return self.model.get_relation(PEER_NAME)
+
+    def set_peer_data(self, key: str, data: JSONData) -> None:
+        """Put information into the peer data bucket instead of `StoredState`."""
+        peers = cast(ops.Relation, self.peers)
+        peers.data[self.app][key] = json.dumps(data)
+
+    def get_peer_data(self, key: str) -> Dict[str, JSONData]:
+        """Retrieve information from the peer data bucket instead of `StoredState`."""
+        if not self.peers:
+            return {}
+        data = self.peers.data[self.app].get(key, '')
+        if not data:
+            return {}
+        return json.loads(data)
+    
+    def _count(self, event: ops.StartEvent) -> None:
+        """
+        This function updates a counter for the number of times a K8s pod has been started.
+
+        It retrieves the current count of pod starts from the 'unit_stats' peer relation data,
+        increments the count, and then updates the 'unit_stats' data with the new count.
+        """
+        unit_stats = self.get_peer_data('unit_stats')
+        counter = cast(str, unit_stats.get('started_counter', '0'))
+        self.set_peer_data('unit_stats', {'started_counter': int(counter) + 1})
+
 
 
 if __name__ == "__main__":  # pragma: nocover

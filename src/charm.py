@@ -46,6 +46,7 @@ class FastAPIDemoCharm(ops.CharmBase):
         framework.observe(self.database.on.endpoints_changed, self._on_database_created)
         framework.observe(self.on.collect_unit_status, self._on_collect_status)
         framework.observe(self.on.start, self._count)
+        framework.observe(self.on.get_db_info_action, self._on_get_db_info_action)
 
     def _on_demo_server_pebble_ready(self, event: ops.PebbleReadyEvent)  -> None:
         """
@@ -243,7 +244,33 @@ class FastAPIDemoCharm(ops.CharmBase):
         counter = cast(str, unit_stats.get('started_counter', '0'))
         self.set_peer_data('unit_stats', {'started_counter': int(counter) + 1})
 
+    def _on_get_db_info_action(self, event: ops.ActionEvent) -> None:
+        """
+        This method is called when "get_db_info" action is called. It shows information about
+        database access points by calling the `fetch_postgres_relation_data` method and creates
+        an output dictionary containing the host, port, if show_password is True, then include
+        username, and password of the database.
+        If PSQL charm is not integrated, the output is set to "No database connected".
 
+        Learn more about actions at https://juju.is/docs/sdk/actions
+        """
+        show_password = event.params['show-password']
+        db_data = self.fetch_postgres_relation_data()
+        if not db_data:
+            event.fail('No database connected')
+            return
+        output = {
+            'db-host': db_data.get('db_host', None),
+            'db-port': db_data.get('db_port', None),
+        }
+        if show_password:
+            output.update(
+                {
+                    'db-username': db_data.get('db_username', None),
+                    'db-password': db_data.get('db_password', None),
+                }
+            )
+        event.set_results(output)
 
 if __name__ == "__main__":  # pragma: nocover
     ops.main(FastAPIDemoCharm)

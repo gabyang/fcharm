@@ -47,3 +47,30 @@ def test_pebble_layer(
     assert 'Waiting for database' in harness.model.unit.status.message
 
 # Read more here: https://ops.readthedocs.io/en/latest/harness.html#module-ops.testing
+
+@pytest.mark.parametrize(
+    'port,expected_status',
+    [
+        (22, ops.BlockedStatus('Invalid port number, 22 is reserved for SSH')),
+        (1234, ops.BlockedStatus('Waiting for database relation')),
+    ],
+)
+def test_port_configuration(
+    monkeypatch, harness: ops.testing.Harness[FastAPIDemoCharm], port, expected_status
+):
+    # Given
+    monkeypatch.setattr(FastAPIDemoCharm, 'version', '1.0.1')
+    harness.container_pebble_ready('demo-server')
+    # When
+    harness.update_config({'server-port': port})
+    harness.evaluate_status()
+    currently_opened_ports = harness.model.unit.opened_ports()
+    port_numbers = {port.port for port in currently_opened_ports}
+    server_port_config = harness.model.config.get('server-port')
+    unit_status = harness.model.unit.status
+    # Then
+    if port == 22:
+        assert server_port_config not in port_numbers
+    else:
+        assert server_port_config in port_numbers
+    assert unit_status == expected_status

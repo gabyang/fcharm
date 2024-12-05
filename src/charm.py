@@ -90,6 +90,8 @@ class FastAPIDemoCharm(ops.CharmBase):
         return ops.pebble.Layer(pebble_layer)
     
     def _on_config_changed(self, event: ops.ConfigChangedEvent) -> None:
+        self._handle_ports()
+
         port = self.config['server-port']
 
         # We need to do validation of rules here because Charm does not know which config options are changed.
@@ -100,6 +102,10 @@ class FastAPIDemoCharm(ops.CharmBase):
         
         logger.debug("New application port is requested: %s", port)
         self._update_layer_and_restart()
+    
+    def _handle_ports(self) -> None:
+        port = cast(int, self.config['server-port'])
+        self.unit.set_ports(port)   
     
     def _update_layer_and_restart(self) -> None:
         """
